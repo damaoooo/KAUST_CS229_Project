@@ -1,3 +1,4 @@
+import math
 import os.path
 import pickle
 
@@ -8,6 +9,9 @@ from transformers import AutoTokenizer
 import pytorch_lightning as pl
 from utils import *
 
+import matplotlib.pyplot as plt
+
+overlaps = []
 
 class TOEFLDataset(dataset.Dataset):
     def __init__(self, data: List[Tpo], tokenizer_name: str, length: int = 300, windows: int = 4):
@@ -18,6 +22,7 @@ class TOEFLDataset(dataset.Dataset):
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         self.data = self.transform()
 
+
     def transform(self):
         res = []
         for i in self.data:
@@ -25,16 +30,24 @@ class TOEFLDataset(dataset.Dataset):
             p = {"corpus": [], "answer": -1}
             if i.is_multi or i.answer == -1:
                 continue
-            overlap = self.slice_length - ((len(i.sentence) - self.slice_length + self.windows) // (self.windows - 1))
-            passage_slices = slicing(i.sentence, self.slice_length, overlap)
 
+            # length <= slice + (window-1) * (slice - overlap)
+            # slice - overlap >= (length - slice) / (window - 1)
+            # overlap <= slice -  (length - slice) / (window - 1)
+            overlap = math.floor(self.slice_length - (len(i.sentence) - self.slice_length + self.windows) / (self.windows - 1))
+            passage_slices = slicing(i.sentence, self.slice_length, overlap)
+            overlaps.append(overlap)
             for op in i.options:
                 for passage_slice in passage_slices:
                     construct = "Question: {}. Passage: {}, Option: {}".format(
                         ' '.join(i.question), ' '.join(passage_slice), ' '.join(op))
                     p["corpus"].append(construct)
             p["answer"] = i.answer
-            assert len(p['corpus']) == 4 * self.windows
+            try:
+                assert len(p['corpus']) == 4 * self.windows
+            except AssertionError:
+                print("length=",len(p['corpus']), "length_passage=", len(i.sentence), "overlap=", overlap)
+                continue
             res.append(self.tokenize(p))
         return res
 
@@ -96,7 +109,7 @@ class TOEFLDataModule(pl.LightningDataModule):
         val_size = len(total_dataset) - train_size
         self.train_set, self.val_set = random_split(total_dataset, [train_size, val_size])
 
-    def setup(self, stage: str):
+    def setup(self, stage):
         pass
 
     def train_dataloader(self):
@@ -107,10 +120,12 @@ class TOEFLDataModule(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    p = TOEFLDataModule()
+    p = TOEFLDataModule(use_cache="")
     p.prepare_data()
     p.setup(stage='fit')
     train = p.train_dataloader()
+    plt.boxplot(overlaps)
+    plt.show()
     for i in train:
         print(i)
         break
