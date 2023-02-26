@@ -3,3 +3,7 @@ data_cache
 events*
 *.zip
 lightning_logs
+
+__pycache__
+.idea
+.vscode
