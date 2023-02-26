@@ -42,11 +42,12 @@ class Classifier(nn.Module):
 
 
 class ShortLanguageModel(pl.LightningModule):
-    def __init__(self, model_path: str = "bert-base-cased", lr: float = 1e-3):
+    def __init__(self, window_size: int = 4, model_path: str = "bert-base-cased", lr: float = 1e-3):
         super().__init__()
         self.model = AutoModel.from_pretrained(model_path)
         self.lr = lr
-        self.classifier = Classifier(input_size=self.model.config.hidden_size)
+        self.window_size = window_size
+        self.classifier = Classifier(input_size=self.model.config.hidden_size, window_size=window_size)
         self.save_hyperparameters()
 
     def forward(self, corpus: torch.Tensor, attn_mask: torch.Tensor):
