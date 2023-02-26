@@ -18,9 +18,7 @@ class Classifier(nn.Module):
         #                     num_layers=num_layers,
         #                     bidirectional=True)
         self.label = nn.Sequential(*[
-            nn.Linear(input_size * 4 * window_size, input_size * 4),
-            nn.ReLU(),
-            nn.Linear(input_size * 4, self.hidden_size),
+            nn.Linear(input_size * 4 * window_size, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, 4),
         ])
