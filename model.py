@@ -9,31 +9,29 @@ from transformers import AutoModel
 
 
 class Classifier(nn.Module):
-    def __init__(self, input_size=512, num_layers=4, hidden_size=512):
+    def __init__(self, window_size, input_size, hidden_size=512):
         super().__init__()
-        self.num_layers = num_layers
+        # self.num_layers = num_layers
         self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
-                            batch_first=True,
-                            num_layers=num_layers,
-                            bidirectional=True)
+        # self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
+        #                     batch_first=True,
+        #                     num_layers=num_layers,
+        #                     bidirectional=True)
         self.label = nn.Sequential(*[
+            nn.Linear(input_size * 4 * window_size, input_size * 4),
             nn.ReLU(),
-            nn.Linear(2 * self.hidden_size * 12, self.hidden_size),
+            nn.Linear(input_size * 4, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 4),
+            nn.Linear(self.hidden_size, 4),
         ])
 
     def forward(self, x: torch.Tensor):
         batch_size, sequence, hidden = x.shape
         # ---------------------------
-        #   [Batch_size x 16  x embedding]
+        #   [Batch_size x windows*4 x embedding]
         # ___________________________
-        x, _ = self.lstm(x)
         # ---------------------------
-        #   [Batch_size x 16 x embedding * 2]
+        #   [Batch_size x windows * 4 * embedding ]
         # ___________________________
         x = x.reshape(batch_size, -1)
         # ---------------------------
