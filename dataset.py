@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import dataset, dataloader, random_split
 
 from transformers import AutoTokenizer
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from utils import *
 
 import matplotlib.pyplot as plt

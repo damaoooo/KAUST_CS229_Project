@@ -1,10 +1,10 @@
 import torch
 import transformers
-
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 from utils import *
 import torch.nn as nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from transformers import AutoModel
 
 
@@ -73,7 +73,7 @@ class ShortLanguageModel(pl.LightningModule):
         return x
 
     def configure_optimizers(self):
-        return torch.optim.Adam(params=self.parameters(), lr=self.lr)
+        return DeepSpeedCPUAdam(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
         corpus = batch['corpus']
