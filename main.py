@@ -13,7 +13,7 @@ if __name__ == "__main__":
     model_path = "albert-base-v2"
     my_model = ShortLanguageModel(lr=1e-6, model_path=model_path)
 
-    my_dataset = TOEFLDataModule(batch_size=1, windows=4, use_cache="", tokenizer=model_path)
+    my_dataset = TOEFLDataModule(batch_size=1, windows=4, use_cache="", tokenizer=model_path, subsize=0.2)
     my_dataset.prepare_data()
 
     trainer = Trainer(
