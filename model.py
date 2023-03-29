@@ -90,7 +90,7 @@ class ShortLanguageModel(pl.LightningModule):
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         self.log("train_acc", accuracy, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         self.log("train_predict", predict, on_step=True, on_epoch=True, prog_bar=True, logger=False, sync_dist=True)
-        self.log("train_answer", answer, on_step=True, on_epoch=True, prog_bar=True, logger=False, sync_dist=True)
+        self.log("train_answer", answer.to(dtype=torch.float), on_step=True, on_epoch=True, prog_bar=True, logger=False, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
