@@ -14,14 +14,15 @@ import matplotlib.pyplot as plt
 overlaps = []
 
 class TOEFLDataset(dataset.Dataset):
-    def __init__(self, data: List[Tpo], tokenizer_name: str, length: int = 300, windows: int = 4):
+    def __init__(self, data: List[Tpo], tokenizer_name: str, length: int = 300, windows: int = 4, subset: float = 1.):
         super().__init__()
         self.data: List[Tpo] = data
         self.slice_length = length
         self.windows = windows
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         self.data = self.transform()
-
+        self.subset = subset
+        self.data = self.data[:int(len(self.data) * self.subset)]
 
     def transform(self):
         res = []
@@ -46,7 +47,7 @@ class TOEFLDataset(dataset.Dataset):
             try:
                 assert len(p['corpus']) == 4 * self.windows
             except AssertionError:
-                print("length=",len(p['corpus']), "length_passage=", len(i.sentence), "overlap=", overlap)
+                print("length=", len(p['corpus']), "length_passage=", len(i.sentence), "overlap=", overlap)
                 continue
             res.append(self.tokenize(p))
         return res
@@ -64,7 +65,7 @@ class TOEFLDataset(dataset.Dataset):
 
 
 class TOEFLDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir="./TOEFL-QA/data", batch_size=32, use_cache="./data_cache", tokenizer: str = "bert-base-cased", windows=4):
+    def __init__(self, data_dir="./TOEFL-QA/data", batch_size=32, use_cache="./data_cache", tokenizer: str = "bert-base-cased", windows=4, subsize: float = 1.):
         super().__init__()
         self.test_set: Union[dataset.Dataset, None] = None
         self.val_set: Union[dataset.Dataset, None] = None
@@ -73,6 +74,7 @@ class TOEFLDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.use_cache = use_cache
         self.tokenizer_name = tokenizer
+        self.subset = subsize
         # TODO: Use cache instead of new data
 
     def load_dataset(self, path: str):
@@ -104,7 +106,7 @@ class TOEFLDataModule(pl.LightningDataModule):
         else:
             total_dataset = self.load_dataset(self.data_dir)
 
-        total_dataset = TOEFLDataset(total_dataset, tokenizer_name=self.tokenizer_name, windows=self.windows)
+        total_dataset = TOEFLDataset(total_dataset, tokenizer_name=self.tokenizer_name, windows=self.windows, subset=self.subset)
         train_size = int(0.8 * len(total_dataset))
         val_size = len(total_dataset) - train_size
         self.train_set, self.val_set = random_split(total_dataset, [train_size, val_size])
