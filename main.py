@@ -21,6 +21,6 @@ if __name__ == "__main__":
         devices=1,
         strategy="deepspeed_stage_3_offload",
         precision=16,
-        max_epochs=1000
+        max_epochs=500
     )
     trainer.fit(model=my_model, train_dataloaders=my_dataset)
