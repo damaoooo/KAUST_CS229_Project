@@ -14,7 +14,7 @@ if __name__ == "__main__":
     model_path = "bert-base-uncased"
     my_model = LanguageModel(lr=5e-6, model_path=model_path)
 
-    my_dataset = CLOTHDataModule(batch_size=1, use_cache="", tokenizer=model_path)
+    my_dataset = CLOTHDataModule(batch_size=1, use_cache="./.data_cache", tokenizer=model_path)
     my_dataset.prepare_data()
 
     trainer = Trainer(
