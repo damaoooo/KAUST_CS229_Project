@@ -3,13 +3,14 @@ import torch.nn as nn
 from transformers import AutoModelForMaskedLM
 import lightning.pytorch as pl
 import torch.nn.functional as F
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 
 class LanguageModel(pl.LightningModule):
     def __init__(self, model_path: str = "bert-base-uncased", lr: float = 1e-5):
         super().__init__()
         self.model_path = model_path
-        self.lm_model = AutoModelForMaskedLM.from_pretrained(self.model_path)
+        self.lm_model = torch.compile(AutoModelForMaskedLM.from_pretrained(self.model_path))
         self.lr = lr
         self.save_hyperparameters()
 
@@ -35,9 +36,9 @@ class LanguageModel(pl.LightningModule):
             #  x = length x vocab_size
             # ----------------------------------------
             t = []
-            for length in range(len(wanted)):
-                t.append(wanted[length].index_select(dim=1, index=options))
-            wanted = torch.stack(t, dim=-1)
+            for i in range(len(wanted)):
+                t.append(wanted[i].index_select(dim=0, index=options[0][i]))
+            wanted = torch.stack(t, dim=0)
 
             # ----------------------------------------
             #  answer = batch_size x length; wanted = length x 4
@@ -45,12 +46,13 @@ class LanguageModel(pl.LightningModule):
             loss_each.append(F.cross_entropy(wanted[:length[passage]], answer[passage][:length[passage]]))
             with torch.no_grad():
                 answer_each = torch.argmax(wanted, -1)[:length[passage]]
-                acc_all = torch.sum((answer_each == answer[passage][:length[passage]])).item()
+                acc_all.append(torch.sum((answer_each == answer[passage][:length[passage]])).item())
         loss_each = torch.stack(loss_each, -1)
         loss_each = torch.mean(loss_each)
         return torch.mean(loss_each), acc_all
 
     def configure_optimizers(self):
+        # return DeepSpeedCPUAdam(self.parameters(), lr=self.lr)
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
