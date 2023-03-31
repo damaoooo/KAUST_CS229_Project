@@ -1,49 +1,46 @@
+import json
+import os
 from dataclasses import dataclass, field
 from typing import List, Union
-import math
 
 
 @dataclass()
-class Tpo:
-    sentence: List[str] = field(default_factory=list)
+class Cloth:
     options: List[List[str]] = field(default_factory=list)
-    question: List[str] = field(default_factory=list)
-    answer: int = -1
-    is_multi: bool = False
-    type: str = ""
+    article: str = field(default="")
+    answer: List[int] = field(default_factory=list)
 
 
-def slicing(s: list, length: int, overlap: int):
-    increase = length - overlap
-    how_many = math.ceil((len(s) - length) / increase)
-    res = []
-    for i in range(how_many+1):
-        res.append(s[i*increase:i*increase + length])
-    return res
+def file_reader(file_path: str):
+    with open(file_path, 'r') as f:
+        content = f.read()
+        f.close()
+    cloth = Cloth()
+    content = json.loads(content)
+    cloth.article = content['article'].lower()
+    cloth.article = cloth.article.replace(" _ ", "[MASK]")
+    cloth.options = content['options']
+    content['answers'] = [ord(x) - ord('A') for x in content['answers']]
+    cloth.answer = content['answers']
+    return cloth
 
 
-def parse_text(data: str, title: str):
-    lines = data.splitlines(keepends=False)
-
-    tpo = Tpo()
-    option_number = -1
-    for line in lines:
-        tokens = line.split(' ')
-        if tokens[0] == 'SENTENCE':
-            tpo.sentence.extend(tokens[1:])
-        elif tokens[0] == 'QUESTION':
-            tpo.question.extend(tokens[1:])
-        elif tokens[0] == 'OPTION':
-            option_number += 1
-            tpo.options.append(tokens[1:-1])
-            if tokens[-1] == '1':
-                if tpo.answer != -1:
-                    tpo.is_multi = True
+def read_dataset(directory: str, separate: bool = False) -> Union[List[Cloth], List[List[Cloth]]]:
+    three_way = ["train", "test", "valid"]
+    middle: List[Cloth] = []
+    high: List[Cloth] = []
+    for direct in three_way:
+        for direct2 in ["high", "middle"]:
+            temp_path = os.path.join(directory, direct, direct2)
+            files = os.listdir(temp_path)
+            for file in files:
+                cloth = file_reader(os.path.join(temp_path, file))
+                if direct2 == "high":
+                    high.append(cloth)
                 else:
-                    tpo.answer = option_number
-    if "lecture" in title:
-        tpo.type = "lecture"
+                    middle.append(cloth)
+    if separate:
+        return [high, middle]
     else:
-        tpo.type = "conversation"
+        return high + middle
 
-    return tpo
