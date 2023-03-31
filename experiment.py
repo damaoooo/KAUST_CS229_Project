@@ -1,23 +1,17 @@
 from utils import *
-import os
-from typing import List
 import matplotlib.pyplot as plt
 
-files = os.listdir("./TOEFL-QA/data")
+from transformers import AutoTokenizer
+import torch
+from copy import deepcopy
+tokenizer = AutoTokenizer.from_pretrained("albert-base-v2")
 
-tpos: List[Tpo] = []
-for file in files:
-    path = os.path.join("./TOEFL-QA/data", file)
-    with open(path, 'r') as f:
-        content = f.read()
-        f.close()
-    tpos.append(parse_text(content, file))
+data = read_dataset("./CLOTH")
 
-length = []
-for i in tpos:
-    length.append(len(i.sentence))
-print(length)
-plt.hist(length, bins=40)
+dist = []
+for cloth in data:
+    tk = tokenizer(cloth.article, return_tensors="pt", max_length=512)['input_ids'].shape[1]
+    dist.append(tk)
+
+plt.hist(dist)
 plt.show()
-
-
