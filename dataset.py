@@ -101,7 +101,7 @@ class CLOTHDataModule(pl.LightningDataModule):
             data = data[self.separate-1]
 
         total_dataset = CLOTHDataset(data, tokenizer_name=self.tokenizer_name, max_length=self.max_length)
-        self.train_set, val_set = random_split(total_dataset, [0.8, 0.2])
+        self.train_set, self.val_set = random_split(total_dataset, [0.8, 0.2])
 
     def train_dataloader(self):
         return dataloader.DataLoader(dataset=self.train_set, batch_size=self.batch_size, shuffle=True,
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     p.prepare_data()
     train = p.train_dataloader()
     idx = 0
-    for i in train:
+    for i in iter(train):
         print(idx)
         idx += 1
 

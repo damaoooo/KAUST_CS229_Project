@@ -30,10 +30,17 @@ class LanguageModel(pl.LightningModule):
         # ----------------------------------------
         acc_all = []
         for passage in range(len(x)):
-            wanted = x[passage].index_select(dim=0, index=position[passage])
-            wanted = wanted.index_select(dim=1, index=options[passage])
+            wanted = x[passage].index_select(dim=0, index=position[passage])[:length[passage]]
             # ----------------------------------------
-            #  answer = batch_size x 20 wanted = 20 x 4
+            #  x = length x vocab_size
+            # ----------------------------------------
+            t = []
+            for length in range(len(wanted)):
+                t.append(wanted[length].index_select(dim=1, index=options))
+            wanted = torch.stack(t, dim=-1)
+
+            # ----------------------------------------
+            #  answer = batch_size x length; wanted = length x 4
             # ----------------------------------------
             loss_each.append(F.cross_entropy(wanted[:length[passage]], answer[passage][:length[passage]]))
             with torch.no_grad():
