@@ -66,7 +66,7 @@ class CLOTHDataset(dataset.Dataset):
 
 class CLOTHDataModule(pl.LightningDataModule):
     def __init__(self, data_path: str = "./CLOTH", batch_size: int = 32, use_cache: str = "./.data_cache",
-                 tokenizer: str = "bert-base-cased", max_length: int = 512, separate: bool = False, num_workers=8):
+                 tokenizer: str = "bert-base-uncased", max_length: int = 512, separate: bool = False, num_workers=8):
         super().__init__()
         self.num_workers = num_workers
         self.train_set: Union[dataset.Dataset, None] = None
@@ -104,12 +104,12 @@ class CLOTHDataModule(pl.LightningDataModule):
         self.train_set, val_set = random_split(total_dataset, [0.8, 0.2])
 
     def train_dataloader(self):
-        return dataloader.DataLoader(self.train_set, batch_size=self.batch_size, shuffle=True,
-                                     num_workers=self.num_workers, pin_memory=True)
+        return dataloader.DataLoader(dataset=self.train_set, batch_size=self.batch_size, shuffle=True,
+                                     num_workers=self.num_workers)
 
     def val_dataloader(self):
-        return dataloader.DataLoader(self.val_set, batch_size=self.batch_size,
-                                     num_workers=self.num_workers, pin_memory=True)
+        return dataloader.DataLoader(dataset=self.val_set, batch_size=self.batch_size,
+                                     num_workers=self.num_workers)
 
 
 if __name__ == '__main__':
