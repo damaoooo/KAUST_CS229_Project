@@ -5,11 +5,14 @@ import lightning.pytorch as pl
 import torch.nn.functional as F
 
 
+# from deepspeed.ops.adam import DeepSpeedCPUAdam
+
 class LanguageModel(pl.LightningModule):
     def __init__(self, model_path: str = "bert-base-uncased", lr: float = 1e-5):
         super().__init__()
         self.model_path = model_path
-        self.lm_model = AutoModelForMaskedLM.from_pretrained(self.model_path)
+        self.lm_model = torch.compile(AutoModelForMaskedLM.from_pretrained(self.model_path))
+        # self.lm_model = AutoModelForMaskedLM.from_pretrained(self.model_path)
         self.lr = lr
         self.save_hyperparameters()
 
@@ -36,7 +39,7 @@ class LanguageModel(pl.LightningModule):
             # ----------------------------------------
             t = []
             for length in range(len(wanted)):
-                t.append(wanted[length].index_select(dim=1, index=options))
+                t.append(wanted[length].index_select(dim=1, index=options[length]))
             wanted = torch.stack(t, dim=-1)
 
             # ----------------------------------------
@@ -51,6 +54,7 @@ class LanguageModel(pl.LightningModule):
         return torch.mean(loss_each), acc_all
 
     def configure_optimizers(self):
+        # return DeepSpeedCPUAdam(self.parameters(), lr=self.lr)
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
@@ -63,7 +67,8 @@ class LanguageModel(pl.LightningModule):
                 total_count += batch['length'][b]
                 total_acc += acc[b]
             self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True, sync_dist=True, prog_bar=True)
-            self.log("train_acc", (total_acc/total_count), on_step=True, on_epoch=True, logger=True, sync_dist=True, prog_bar=True)
+            self.log("train_acc", (total_acc / total_count), on_step=True, on_epoch=True, logger=True, sync_dist=True,
+                     prog_bar=True)
 
         return loss
 
@@ -85,6 +90,3 @@ class LanguageModel(pl.LightningModule):
 
 if __name__ == "__main__":
     model = LanguageModel()
-
-
-
