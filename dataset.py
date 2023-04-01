@@ -18,7 +18,7 @@ class CLOTHDataset(dataset.Dataset):
         super().__init__()
         self.data = data
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-        self.mask_id = self.tokenizer("[MASK]")["input_ids"][1]
+        self.mask_id = self.tokenizer.mask_token_id
         self.max_length = max_length
         self.data = self.transform()
 
@@ -29,7 +29,7 @@ class CLOTHDataset(dataset.Dataset):
             if not cloth.options:
                 continue
             p = {"options": [], "article": "", "answer": []}
-            article = self.tokenizer(cloth.article, padding="max_length", max_length=self.max_length,
+            article = self.tokenizer(cloth.article.replace("[MASK]", self.tokenizer.mask_token), padding="max_length", max_length=self.max_length,
                                      return_tensors="pt")
 
             article, mask = article['input_ids'][0], article["attention_mask"][0]
