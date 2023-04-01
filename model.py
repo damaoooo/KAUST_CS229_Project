@@ -38,9 +38,9 @@ class LanguageModel(pl.LightningModule):
             #  x = length x vocab_size
             # ----------------------------------------
             t = []
-            for length in range(len(wanted)):
-                t.append(wanted[length].index_select(dim=1, index=options[length]))
-            wanted = torch.stack(t, dim=-1)
+            for i in range(len(wanted)):
+                t.append(wanted[i].index_select(dim=0, index=options[passage][i]))
+            wanted = torch.stack(t, dim=0)
 
             # ----------------------------------------
             #  answer = batch_size x length; wanted = length x 4
@@ -48,7 +48,7 @@ class LanguageModel(pl.LightningModule):
             loss_each.append(F.cross_entropy(wanted[:length[passage]], answer[passage][:length[passage]]))
             with torch.no_grad():
                 answer_each = torch.argmax(wanted, -1)[:length[passage]]
-                acc_all = torch.sum((answer_each == answer[passage][:length[passage]])).item()
+                acc_all.append(torch.sum((answer_each == answer[passage][:length[passage]])).item())
         loss_each = torch.stack(loss_each, -1)
         loss_each = torch.mean(loss_each)
         return torch.mean(loss_each), acc_all
