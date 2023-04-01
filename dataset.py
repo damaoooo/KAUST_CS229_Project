@@ -29,7 +29,7 @@ class CLOTHDataset(dataset.Dataset):
             if not cloth.options:
                 continue
             p = {"options": [], "article": "", "answer": []}
-            article = self.tokenizer(cloth.article.replace('[MASK]', self.tokenizer.mask_token), padding="max_length", max_length=self.max_length,
+            article = self.tokenizer(cloth.article.replace("[MASK]", self.tokenizer.mask_token), padding="max_length", max_length=self.max_length,
                                      return_tensors="pt")
 
             article, mask = article['input_ids'][0], article["attention_mask"][0]
@@ -105,11 +105,11 @@ class CLOTHDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         return dataloader.DataLoader(dataset=self.train_set, batch_size=self.batch_size, shuffle=True,
-                                     num_workers=self.num_workers, persistent_workers=True)
+                                     num_workers=self.num_workers)
 
     def val_dataloader(self):
         return dataloader.DataLoader(dataset=self.val_set, batch_size=self.batch_size,
-                                     num_workers=self.num_workers, persistent_workers=True)
+                                     num_workers=self.num_workers)
 
 
 if __name__ == '__main__':
