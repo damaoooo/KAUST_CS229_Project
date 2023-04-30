@@ -1,6 +1,6 @@
 import os.path
 import random
-
+import pickle
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data import random_split
@@ -52,7 +52,7 @@ def collate_fn(batch):
 
 
 class SCDEDataModule(pl.LightningDataModule):
-    def __init__(self, data_file: str = "./scde", batch_size: int = 16, num_workers: int = 8):
+    def __init__(self, data_file: str = "./data.cache", batch_size: int = 16, num_workers: int = 8):
         super().__init__()
         self.data_file = data_file
         self.train_set: Union[Dataset, None] = None
@@ -61,11 +61,9 @@ class SCDEDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
 
     def prepare_data(self):
-        train_file = os.path.join(self.data_file, "train.json")
-        val_file = os.path.join(self.data_file, "dev.json")
-
-        train_data = read_file(train_file)
-        val_data = read_file(val_file)
+        with open(self.data_file, "rb") as f:
+            cache = pickle.load(f)
+        train_data, val_data = cache['train'], cache['dev']
 
         self.train_set = SCDEDataset(train_data)
         self.val_set = SCDEDataset(val_data)
