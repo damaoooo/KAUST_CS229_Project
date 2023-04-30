@@ -1,158 +1,89 @@
-import math
 import os.path
-import pickle
+import random
 
 import torch
-from torch.utils.data import dataset, dataloader, random_split
-
-from transformers import AutoTokenizer
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import random_split
 import lightning.pytorch as pl
-from utils import *
-
-import matplotlib.pyplot as plt
-
-overlaps = []
+from typing import Union
+from utils import read_file
 
 
-class TOEFLDataset(dataset.Dataset):
-    def __init__(self, data: List[Tpo], tokenizer_name: str, length: int = 300, windows: int = 4, subset: float = 1.,
-                 is_slice: bool = True):
+class SCDEDataset(Dataset):
+    def __init__(self, data):
         super().__init__()
-        self.data: List[Tpo] = data
-        self.slice_length = length
-        self.windows = windows
-        self.is_slice = is_slice
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-        if self.is_slice:
-            self.data = self.short_transform()
-        else:
-            self.data = self.long_transform()
-        self.subset = subset
-        self.data = self.data[:int(len(self.data) * self.subset)]
-
-    def long_transform(self):
-        res = []
-        for tpo in self.data:
-            tpo: Tpo
-            p = {"corpus": [], "answer": -1}
-            if tpo.is_multi or tpo.answer == -1 or len(tpo.sentence) >= 1000:
-                continue
-            for option in tpo.options:
-                prompt = "Passage: {}. Question: {}, Option: {}".format(
-                        ' '.join(tpo.sentence), ' '.join(tpo.question), ' '.join(option))
-                p['corpus'].append(prompt)
-            p['answer'] = tpo.answer
-            res.append(self.tokenize(p, 1500))
-        return res
-
-    def short_transform(self):
-        res = []
-        for i in self.data:
-            i: Tpo
-            p = {"corpus": [], "answer": -1}
-            if i.is_multi or i.answer == -1:
-                continue
-
-            # length <= slice + (window-1) * (slice - overlap)
-            # slice - overlap >= (length - slice) / (window - 1)
-            # overlap <= slice -  (length - slice) / (window - 1)
-            overlap = math.floor(
-                self.slice_length - (len(i.sentence) - self.slice_length + self.windows) / (self.windows - 1))
-            passage_slices = slicing(i.sentence, self.slice_length, overlap)
-            overlaps.append(overlap)
-            for op in i.options:
-                for passage_slice in passage_slices:
-                    construct = "Passage: {}. Question: {}, Option: {}".format(
-                        ' '.join(i.question), ' '.join(passage_slice), ' '.join(op))
-                    p["corpus"].append(construct)
-            p["answer"] = i.answer
-            try:
-                assert len(p['corpus']) == 4 * self.windows
-            except AssertionError:
-                print("length=", len(p['corpus']), "length_passage=", len(i.sentence), "overlap=", overlap)
-                continue
-            res.append(self.tokenize(p))
-        return res
-
-    def tokenize(self, corpus: dict, max_length: int = 512):
-        corpus_ = self.tokenizer(corpus["corpus"], padding="max_length", max_length=max_length, return_tensors='pt')
-        answer = torch.tensor(corpus["answer"], dtype=torch.long)
-        return {"corpus": corpus_['input_ids'], "mask": corpus_["attention_mask"], "answer": answer}
+        self.data = data
 
     def __getitem__(self, item):
-        return self.data[item]
+        r1, r2, w1, w2 = self.data[item]
+
+        r1 = self._to_tensor(r1)
+        r2 = self._to_tensor(r2)
+        w1 = self._to_tensor(w1)
+        w2 = self._to_tensor(w2)
+
+        label = torch.tensor([1, 0])
+
+        return r1, r2, w1, w2, label
+
+    def _to_tensor(self, sample):
+        sample['input_ids'] = torch.tensor(sample['input_ids'], dtype=torch.int64)[0]
+        sample['token_type_ids'] = torch.tensor(sample['token_type_ids'], dtype=torch.int64)[0]
+        sample['attention_mask'] = torch.tensor(sample['attention_mask'], dtype=torch.int64)[0]
+        return sample
 
     def __len__(self):
         return len(self.data)
 
 
-class TOEFLDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir="./TOEFL-QA/data", batch_size=32, use_cache="./data_cache",
-                 tokenizer: str = "bert-base-cased", windows=4, subsize: float = 1., is_slicing: bool = True):
-        super().__init__()
-        self.test_set: Union[dataset.Dataset, None] = None
-        self.val_set: Union[dataset.Dataset, None] = None
-        self.windows = windows
-        self.data_dir = data_dir
-        self.batch_size = batch_size
-        self.use_cache = use_cache
-        self.tokenizer_name = tokenizer
-        self.subset = subsize
-        self.is_slicing = is_slicing
-        # TODO: Use cache instead of new data
+def collate_fn(batch):
+    batch_size = len(batch[0])
+    random_idx = list(range(4 * batch_size))
+    random.shuffle(random_idx)
+    r1, r2, w1, w2 = batch
+    input_ids = torch.stack([r1['input_ids'], r2['input_ids'], w1['input_ids'], w2['input_ids']],
+                            dim=0)[random_idx]
+    token_types = torch.stack([r1['token_type_ids'], r2['token_type_ids'], w1['token_type_ids'], w2['token_type_ids']],
+                              dim=0)[random_idx]
+    attn_mask = torch.stack([r1['attention_mask'], r2['attention_mask'], w1['attention_mask'], w2['attention_mask']],
+                            dim=0)[random_idx]
+    label = torch.tensor([1] * (2*batch_size) + [0] * (2*batch_size))
+    return input_ids, token_types, attn_mask, label
 
-    def load_dataset(self, path: str):
-        d = []
-        for file in os.listdir(path):
-            with open(os.path.join(path, file), 'r') as f:
-                p = f.read()
-                f.close()
-            d.append(parse_text(p, file))
-        return d
+
+class SCDEDataModule(pl.LightningDataModule):
+    def __init__(self, data_file: str = "./scde", batch_size: int = 16, num_workers: int = 8):
+        super().__init__()
+        self.data_file = data_file
+        self.train_set: Union[Dataset, None] = None
+        self.val_set: Union[Dataset, None] = None
+        self.batch_size = batch_size
+        self.num_workers = num_workers
 
     def prepare_data(self):
-        AutoTokenizer.from_pretrained(self.tokenizer_name)
+        train_file = os.path.join(self.data_file, "train.json")
+        val_file = os.path.join(self.data_file, "dev.json")
 
-        if not os.path.exists(self.data_dir):
-            raise FileExistsError("No, Please Provide a valid dataset position")
+        train_data = read_file(train_file)
+        val_data = read_file(val_file)
 
-        if self.use_cache:
-            if os.path.exists(self.use_cache):
-                with open(self.use_cache, "rb") as f:
-                    total_dataset = pickle.load(f)
-                    f.close()
-            else:
-                total_dataset = self.load_dataset(self.data_dir)
-                if self.use_cache:
-                    with open(self.use_cache, 'wb') as f:
-                        pickle.dump(total_dataset, f)
-                        f.close()
-        else:
-            total_dataset = self.load_dataset(self.data_dir)
-
-        total_dataset = TOEFLDataset(total_dataset, tokenizer_name=self.tokenizer_name, windows=self.windows,
-                                     subset=self.subset, is_slice=self.is_slicing)
-        train_size = int(0.8 * len(total_dataset))
-        val_size = len(total_dataset) - train_size
-        self.train_set, self.val_set = random_split(total_dataset, [train_size, val_size])
-
-    def setup(self, stage):
-        pass
+        self.train_set = SCDEDataset(train_data)
+        self.val_set = SCDEDataset(val_data)
 
     def train_dataloader(self):
-        return dataloader.DataLoader(self.train_set, batch_size=self.batch_size, num_workers=4)
+        return DataLoader(dataset=self.train_set, batch_size=self.batch_size,
+                          num_workers=self.num_workers, shuffle=True, pin_memory=True)
 
     def val_dataloader(self):
-        return dataloader.DataLoader(self.val_set, batch_size=self.batch_size, num_workers=4)
+        return DataLoader(dataset=self.val_set, batch_size=self.batch_size,
+                          num_workers=self.num_workers, pin_memory=True)
 
 
 if __name__ == "__main__":
-    p = TOEFLDataModule(use_cache="", is_slicing=False)
-    p.prepare_data()
-    p.setup(stage='fit')
-    train = p.train_dataloader()
-    plt.boxplot(overlaps)
-    plt.show()
-    for i in train:
-        print(i['corpus'])
-        break
+    data_module = SCDEDataModule()
+    data_module.prepare_data()
+    train_set = data_module.train_dataloader()
+    cnt = 0
+    for i in iter(train_set):
+        cnt += 1
+    print(cnt)
