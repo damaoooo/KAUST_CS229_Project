@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Union, Dict
 import re
 import math
+import pickle
 import json
 import transformers
 
@@ -73,7 +74,8 @@ def extract_feature(s: Dict):
         wrong_1 = align(wrong_1)
         wrong_2 = tokenizer(wrong, AN, padding='max_length', max_length=512, truncation=True)
 
-        slides.append([right_1, right_2, wrong_1, wrong_2])
+        slides.append([right_1, right_2, 1])
+        slides.append([wrong_1, wrong_2, 0])
 
     return slides
 
@@ -90,5 +92,10 @@ def read_file(data_path: str):
 
 
 if __name__ == '__main__':
-    s = read_file("./scde/train.json")
-    print(len(s))
+    train = read_file("./scde/train.json")
+    dev = read_file("./scde/dev.json")
+    cache = {"train": train, "dev": dev}
+    with open("./data.cache", "wb") as f:
+        pickle.dump(cache, f)
+        f.close()
+

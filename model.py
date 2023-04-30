@@ -1,110 +1,61 @@
-import torch
-import transformers
-from deepspeed.ops.adam import DeepSpeedCPUAdam
-from utils import *
-import torch.nn as nn
-import torch.nn.functional as F
 import lightning.pytorch as pl
-from transformers import AutoModel
+import numpy as np
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
+import transformers
 
 
-class Classifier(nn.Module):
-    def __init__(self, window_size, input_size, hidden_size=512):
+class MyModelModule(pl.LightningModule):
+    def __init__(self, model_path: str = "bert-base-uncased", learning_rate: float = 1e-5):
         super().__init__()
-        # self.num_layers = num_layers
-        self.hidden_size = hidden_size
-        # self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
-        #                     batch_first=True,
-        #                     num_layers=num_layers,
-        #                     bidirectional=True)
-        self.label = nn.Sequential(*[
-            nn.Linear(input_size * 4 * window_size, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, 4),
-        ])
+        self.model_path = model_path
+        self.model = transformers.BertForNextSentencePrediction.from_pretrained(self.model_path)
+        # self.model = torch.compile(self.model)
+        self.learning_rate = learning_rate
 
-    def forward(self, x: torch.Tensor):
-        batch_size, sequence, hidden = x.shape
-        # ---------------------------
-        #   [Batch_size x windows*4 x embedding]
-        # ___________________________
-        # ---------------------------
-        #   [Batch_size x windows * 4 * embedding ]
-        # ___________________________
-        x = x.reshape(batch_size, -1)
-        # ---------------------------
-        #   [Batch_size x 16 * embedding * 2]
-        # ___________________________
-        x = self.label(x)
-        return x
+        self.train_step_output = []
+        self.val_step_output = []
 
+    def forward(self, x):
+        r1, r2, label = x
+        logit1 = self.model(**r1).logits
+        logit2 = self.model(**r2).logits
 
-class ShortLanguageModel(pl.LightningModule):
-    def __init__(self, window_size: int = 4, model_path: str = "bert-base-cased", lr: float = 1e-3):
-        super().__init__()
-        self.model = AutoModel.from_pretrained(model_path)
-        self.lr = lr
-        self.window_size = window_size
-        self.classifier = Classifier(input_size=self.model.config.hidden_size, window_size=window_size)
-        self.save_hyperparameters()
+        x = (logit1 + logit2) / 2
+        loss = F.cross_entropy(x, label)
 
-    def forward(self, corpus: torch.Tensor, attn_mask: torch.Tensor):
-        # --------------------------
-        # [batch size x 16 x seq_len]
-        # --------------------------
+        with torch.no_grad():
+            ok = x.argmax(dim=-1)
+            ok = torch.sum(x == label).item()
 
-        x = corpus
-        batch_size, sequence, sentences = x.shape
-        x = x.reshape(batch_size * sequence, sentences)
-        attn_mask = attn_mask.reshape(batch_size * sequence, sentences)
-        # --------------------------
-        # [batch size * 16 x seq_len]
-        # --------------------------
-        x = self.model(input_ids=x, attention_mask=attn_mask).pooler_output
-        # ---------------------------
-        #   [Batch_size * 16  x embedding]
-        # ___________________________
-        x = x.reshape(batch_size, sequence, -1)
-        # ---------------------------
-        #   [Batch_size x 16  x embedding]
-        # ___________________________
-        x = self.classifier.forward(x)
-
-        return x
-
-    def configure_optimizers(self):
-        return DeepSpeedCPUAdam(self.parameters(), lr=self.lr)
+        return ok, loss
 
     def training_step(self, batch, batch_idx):
-        corpus = batch['corpus']
-        attn_mask = batch['mask']
-        answer = batch['answer']
-        output = self.forward(corpus, attn_mask)
-        loss = F.cross_entropy(output, answer)
-        with torch.no_grad():
-            batch_size = answer.shape
-            predict = torch.argmax(output, dim=-1)
-            accuracy = (predict == answer).sum() / batch_size[0]
-            predict = predict[0]
-            answer = answer[0]
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log("train_acc", accuracy, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log("train_predict", predict, on_step=True, on_epoch=True, prog_bar=True, logger=False, sync_dist=True)
-        self.log("train_answer", answer.to(dtype=torch.float), on_step=True, on_epoch=True, prog_bar=True, logger=False, sync_dist=True)
+        batch_len = len(batch[0])
+        ok, loss = self.forward(batch)
+        self.train_step_output.append([batch_len, ok])
+
+        self.log("train_loss", loss.item(), on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log("train_acc", ok / batch_len, on_step=True, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
         return loss
+
+    def on_train_epoch_end(self):
+        acc = np.sum([x[1] for x in self.train_step_output]) / np.sum([x[0] for x in self.train_step_output])
+        self.log("train_acc", acc.item(), on_epoch=True, logger=True, sync_dist=True, prog_bar=True)
+        self.train_step_output.clear()
 
     def validation_step(self, batch, batch_idx):
-        corpus = batch['corpus']
-        attn_mask = batch['mask']
-        answer = batch['answer']
-        output = self.forward(corpus, attn_mask)
-        loss = F.cross_entropy(output, answer)
-        batch_size = answer.shape
-        accuracy = (torch.argmax(output, dim=-1) == answer).sum() / batch_size[0]
-        self.log("val_loss", loss, sync_dist=True)
-        self.log("val_acc", accuracy, sync_dist=True)
+        batch_len = len(batch[0])
+        loss, ok = self.forward(batch)
+        self.log("val_loss", loss.item(), on_epoch=True, logger=True, sync_dist=True, prog_bar=True)
+        self.val_step_output.append([batch_len, ok])
         return loss
 
+    def on_validation_epoch_end(self):
+        acc = np.sum([x[1] for x in self.val_step_output]) / np.sum([x[0] for x in self.val_step_output])
+        self.log("val_acc", acc.item(), on_epoch=True, logger=True, sync_dist=True, prog_bar=True)
+        self.val_step_output.clear()
 
-if __name__ == '__main__':
-    model = ShortLanguageModel()
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), lr=self.learning_rate)

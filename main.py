@@ -1,26 +1,27 @@
 import torch
-from lightning.pytorch import Trainer
-
-from model import ShortLanguageModel
-from dataset import TOEFLDataModule
 import os
+from lightning.pytorch import Trainer
+from model import MyModelModule
+from dataset import SCDEDataModule
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:100"
+os.environ["LD_LIBRARY_PATH"] = "/usr/local/cuda-11.7/lib64"
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision('medium')
-    model_path = "allenai/longformer-base-4096"
-    my_model = ShortLanguageModel(lr=1e-5, model_path=model_path)
 
-    my_dataset = TOEFLDataModule(batch_size=1, windows=4, use_cache="", tokenizer=model_path, subsize=1, is_slicing=False)
-    my_dataset.prepare_data()
+    my_dataset = SCDEDataModule(batch_size=32, num_workers=8)
+
+    my_model = MyModelModule(model_path="bert-base-uncased")
 
     trainer = Trainer(
         accelerator="gpu",
-        devices=1,
-        strategy="deepspeed_stage_3_offload",
         precision="16-mixed",
-        max_epochs=500
+        max_epochs=100,
+        # val_check_interval=0.2,
+        # gradient_clip_val=0.5,
+        # gradient_clip_algorithm="value"
     )
-    trainer.fit(model=my_model, train_dataloaders=my_dataset)
+    # trainer.validate(model=my_model, dataloaders=my_dataset)
+    trainer.fit(model=my_model, datamodule=my_dataset)

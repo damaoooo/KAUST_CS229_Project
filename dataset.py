@@ -1,12 +1,10 @@
-import os.path
-import random
 import pickle
+import random
+from typing import Union
+
+import lightning.pytorch as pl
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torch.utils.data import random_split
-import lightning.pytorch as pl
-from typing import Union
-from utils import read_file
 
 
 class SCDEDataset(Dataset):
@@ -15,16 +13,14 @@ class SCDEDataset(Dataset):
         self.data = data
 
     def __getitem__(self, item):
-        r1, r2, w1, w2 = self.data[item]
+        r1, r2, label = self.data[item]
 
         r1 = self._to_tensor(r1)
         r2 = self._to_tensor(r2)
-        w1 = self._to_tensor(w1)
-        w2 = self._to_tensor(w2)
 
-        label = torch.tensor([1, 0])
+        label = torch.tensor(label)
 
-        return r1, r2, w1, w2, label
+        return r1, r2, label
 
     def _to_tensor(self, sample):
         sample['input_ids'] = torch.tensor(sample['input_ids'], dtype=torch.int64)[0]
@@ -47,7 +43,7 @@ def collate_fn(batch):
                               dim=0)[random_idx]
     attn_mask = torch.stack([r1['attention_mask'], r2['attention_mask'], w1['attention_mask'], w2['attention_mask']],
                             dim=0)[random_idx]
-    label = torch.tensor([1] * (2*batch_size) + [0] * (2*batch_size))
+    label = torch.tensor([1] * (2 * batch_size) + [0] * (2 * batch_size))
     return input_ids, token_types, attn_mask, label
 
 
