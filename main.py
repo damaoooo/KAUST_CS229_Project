@@ -11,7 +11,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 if __name__ == "__main__":
     torch.set_float32_matmul_precision('medium')
 
-    my_dataset = SCDEDataModule(batch_size=32, num_workers=8)
+    my_dataset = SCDEDataModule(batch_size=8, num_workers=8)
 
     my_model = MyModelModule(model_path="bert-base-uncased")
 
@@ -19,6 +19,7 @@ if __name__ == "__main__":
         accelerator="gpu",
         precision="16-mixed",
         max_epochs=100,
+        # strategy="deepspeed_stage_2",
         # val_check_interval=0.2,
         # gradient_clip_val=0.5,
         # gradient_clip_algorithm="value"

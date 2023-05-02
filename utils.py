@@ -10,25 +10,6 @@ import transformers
 tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
 
 
-@dataclass()
-class Tpo:
-    sentence: List[str] = field(default_factory=list)
-    options: List[List[str]] = field(default_factory=list)
-    question: List[str] = field(default_factory=list)
-    answer: int = -1
-    is_multi: bool = False
-    type: str = ""
-
-
-def slicing(s: list, length: int, overlap: int):
-    increase = length - overlap
-    how_many = math.ceil((len(s) - length) / increase)
-    res = []
-    for i in range(how_many + 1):
-        res.append(s[i * increase:i * increase + length])
-    return res
-
-
 def align(s: dict):
     """
 
@@ -37,7 +18,7 @@ def align(s: dict):
     if len(s['input_ids']) > 512:
         s['input_ids'] = [101] + s['input_ids'][-511:]
         s['token_type_ids'] = [0] + s['token_type_ids'][-511:]
-        s['attention_mask'] = [1] + s['attention_mask']
+        s['attention_mask'] = [1] + s['attention_mask'][-511:]
     return s
 
 

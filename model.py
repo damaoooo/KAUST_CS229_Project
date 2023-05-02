@@ -11,23 +11,25 @@ class MyModelModule(pl.LightningModule):
         super().__init__()
         self.model_path = model_path
         self.model = transformers.BertForNextSentencePrediction.from_pretrained(self.model_path)
-        # self.model = torch.compile(self.model)
+        self.model = torch.compile(self.model)
         self.learning_rate = learning_rate
 
         self.train_step_output = []
         self.val_step_output = []
 
     def forward(self, x):
-        r1, r2, label = x
-        logit1 = self.model(**r1).logits
-        logit2 = self.model(**r2).logits
+        r1_input_ids, r1_token_type, r1_attn_mask, r2_input_ids, r2_token_type, r2_attn_mask, label = x
+
+        logit1 = self.model(input_ids=r1_input_ids, token_type_ids=r1_token_type, attention_mask=r1_attn_mask).logits
+        
+        logit2 = self.model(input_ids=r2_input_ids, token_type_ids=r2_token_type, attention_mask=r2_attn_mask).logits
 
         x = (logit1 + logit2) / 2
         loss = F.cross_entropy(x, label)
 
         with torch.no_grad():
             ok = x.argmax(dim=-1)
-            ok = torch.sum(x == label).item()
+            ok = torch.sum(ok == label).item()
 
         return ok, loss
 
@@ -47,8 +49,8 @@ class MyModelModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         batch_len = len(batch[0])
-        loss, ok = self.forward(batch)
-        self.log("val_loss", loss.item(), on_epoch=True, logger=True, sync_dist=True, prog_bar=True)
+        ok, loss = self.forward(batch)
+        self.log("val_loss", loss, on_epoch=True, logger=True, sync_dist=True, prog_bar=True)
         self.val_step_output.append([batch_len, ok])
         return loss
 

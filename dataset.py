@@ -5,6 +5,7 @@ from typing import Union
 import lightning.pytorch as pl
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import random_split
 
 
 class SCDEDataset(Dataset):
@@ -20,12 +21,12 @@ class SCDEDataset(Dataset):
 
         label = torch.tensor(label)
 
-        return r1, r2, label
+        return r1['input_ids'], r1['token_type_ids'], r1['attention_mask'], r2['input_ids'], r2['token_type_ids'], r2['attention_mask'], label
 
     def _to_tensor(self, sample):
-        sample['input_ids'] = torch.tensor(sample['input_ids'], dtype=torch.int64)[0]
-        sample['token_type_ids'] = torch.tensor(sample['token_type_ids'], dtype=torch.int64)[0]
-        sample['attention_mask'] = torch.tensor(sample['attention_mask'], dtype=torch.int64)[0]
+        sample['input_ids'] = torch.LongTensor(sample['input_ids'])
+        sample['token_type_ids'] = torch.LongTensor(sample['token_type_ids'])
+        sample['attention_mask'] = torch.LongTensor(sample['attention_mask'])
         return sample
 
     def __len__(self):
@@ -60,9 +61,10 @@ class SCDEDataModule(pl.LightningDataModule):
         with open(self.data_file, "rb") as f:
             cache = pickle.load(f)
         train_data, val_data = cache['train'], cache['dev']
+        dataset = SCDEDataset(train_data + val_data)
+        
 
-        self.train_set = SCDEDataset(train_data)
-        self.val_set = SCDEDataset(val_data)
+        self.train_set, self.val_set = random_split(dataset, [0.8, 0.2])
 
     def train_dataloader(self):
         return DataLoader(dataset=self.train_set, batch_size=self.batch_size,
